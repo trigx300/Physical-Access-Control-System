@@ -154,152 +154,177 @@ const char* serverIndex =
  "});"
  "</script>";
 
+// This function sets the color of an LED and shows the color on a pixel display
 void setLED(int r, int g, int b) {
-  pixels.setPixelColor(0, pixels.Color(r, g, b));
-  pixels.show();
+  pixels.setPixelColor(0, pixels.Color(r, g, b)); // set the color of the pixel to (r,g,b) at index 0
+  pixels.show(); // update the pixel display with the new color
 }
 
+// This function unlocks the door, turns on a green LED for 3 seconds and then turns on a red LED and locks the door.
 void unlockDoor() {
-  digitalWrite(DOOR_STRIKE_PIN, HIGH);
-  setLED(0, 255, 0);  // green
-  delay(3000);        // wait 3 seconds before locking door
-  setLED(255, 0, 0);  // red
-  digitalWrite(DOOR_STRIKE_PIN, LOW);
+  digitalWrite(DOOR_STRIKE_PIN, HIGH); // activate the door strike to unlock the door
+  setLED(0, 255, 0);  // turn on green LED to indicate that the door is unlocked
+  delay(3000);        // wait 3 seconds before locking the door
+  setLED(255, 0, 0);  // turn on red LED to indicate that the door is locked
+  digitalWrite(DOOR_STRIKE_PIN, LOW); // deactivate the door strike to lock the door
 }
 
+// This function checks if a given code is valid or not by comparing it to a list of valid codes in the configuration.
 bool isCodeValid(String enteredCode) {
-  for (int i = 0; i < config.numCodes; i++) {
+  for (int i = 0; i < config.numCodes; i++) { // iterate through each code in the configuration
     Serial.print("Checking code ");
     Serial.print(i);
     Serial.print(": ");
-    Serial.println(config.codes[i].value);
+    Serial.println(config.codes[i].value); // print the code being checked
 
-    if (config.codes[i].value == enteredCode) {
+    if (config.codes[i].value == enteredCode) { // if the entered code matches a valid code in the configuration, return true
       Serial.println("Valid code found!");
       return true;
     }
   }
-  Serial.println("No valid code found.");
+  Serial.println("No valid code found."); // if no valid code is found, return false
   return false;
 }
 
+
+// This function reads input from a keypad and performs actions based on the input.
 void readKeypad() {
-  char key = keypad.getKey();
+  char key = keypad.getKey(); // read input from the keypad
 
-  if (key) {
-    if (key == '#') {
+  if (key) { // if a key is pressed
+    if (key == '#') { // if the key pressed is the pound symbol
       Serial.print("Entered code: ");
-      Serial.println(enteredCode);
+      Serial.println(enteredCode); // print the entered code to the serial monitor
 
-      if (isCodeValid(enteredCode)) {
-        unlockDoor();
+      if (isCodeValid(enteredCode)) { // check if the entered code is valid
+        unlockDoor(); // if it is, unlock the door
       }else{        
-          setLED(255, 155, 0);  // yellow
-          delay(100);
-          setLED(255, 0, 0);  // red
-          delay(100);
-          setLED(255, 155, 0);  // yellow
-          delay(100);
-          setLED(255, 0, 0);  // red
-          }      
-      enteredCode = "";
-    } else if (key == '*') {
-      enteredCode = "";
-    } else {
-      enteredCode += key;
+          setLED(255, 155, 0);  // turn on yellow LED to indicate an invalid code
+          delay(100); // delay for 100 milliseconds
+          setLED(255, 0, 0);  // turn on red LED to indicate an invalid code
+          delay(100); // delay for 100 milliseconds
+          setLED(255, 155, 0);  // turn on yellow LED to indicate an invalid code
+          delay(100); // delay for 100 milliseconds
+          setLED(255, 0, 0);  // turn on red LED to indicate an invalid code
+      }      
+      enteredCode = ""; // clear the entered code
+    } else if (key == '*') { // if the key pressed is the asterisk symbol
+      enteredCode = ""; // clear the entered code
+    } else { // if any other key is pressed
+      enteredCode += key; // add the key to the entered code
     }
   }
 }
 
+// This function loads a configuration file from SPIFFS (a file system for embedded devices).
 void loadConfig() {
-  if (SPIFFS.exists(CONFIG_FILE)) {
-    File configFile = SPIFFS.open(CONFIG_FILE, "r");
-    if (configFile) {
-      size_t size = configFile.size();
-      std::unique_ptr<char[]> buf(new char[size]);
-      configFile.readBytes(buf.get(), size);
-      configFile.close();
+// Check if the configuration file exists.
+if (SPIFFS.exists(CONFIG_FILE)) {
+// Open the configuration file for reading.
+File configFile = SPIFFS.open(CONFIG_FILE, "r");
+if (configFile) {
+// Read the entire content of the configuration file into a buffer.
+size_t size = configFile.size();
+std::unique_ptr<char[]> buf(new char[size]);
+configFile.readBytes(buf.get(), size);
+configFile.close();
 
-      DynamicJsonDocument doc(1024);
-      DeserializationError error = deserializeJson(doc, buf.get());
-      if (!error) {
-        JsonArray codes = doc["codes"];
-        for (JsonVariant code : codes) {
-          if (code.is<String>()) {
-            // This is a code without expiration
-            String codeValue = code.as<String>();
-            config.codes[config.numCodes++] = Code(codeValue);
-          } else if (code.is<JsonObject>()) {
-            // This is a code with expiration
-            JsonObject codeObj = code.as<JsonObject>();
-            String codeValue = codeObj["value"].as<String>();
-            String expiresStr = codeObj["expires"].as<String>();
-            time_t expires = 0;
-            if (expiresStr != "") {
-              struct tm tm;
-              strptime(expiresStr.c_str(), "%Y-%m-%dT%H:%M", &tm);
-              expires = mktime(&tm);
-            }
-            config.codes[config.numCodes++] = Code(codeValue, expiresStr);
-          }
+  // Parse the buffer into a JSON document.
+  DynamicJsonDocument doc(1024);
+  DeserializationError error = deserializeJson(doc, buf.get());
+  if (!error) {
+    // Extract the codes array from the JSON document.
+    JsonArray codes = doc["codes"];
+    // Iterate over each element of the codes array.
+    for (JsonVariant code : codes) {
+      if (code.is<String>()) {
+        // This is a code without expiration.
+        // Extract the code value as a string and add it to the configuration object.
+        String codeValue = code.as<String>();
+        config.codes[config.numCodes++] = Code(codeValue);
+      } else if (code.is<JsonObject>()) {
+        // This is a code with expiration.
+        // Extract the code value and expiration date from the JSON object and add them to the configuration object.
+        JsonObject codeObj = code.as<JsonObject>();
+        String codeValue = codeObj["value"].as<String>();
+        String expiresStr = codeObj["expires"].as<String>();
+        time_t expires = 0;
+        if (expiresStr != "") {
+          // Convert the expiration date string to a time_t value.
+          struct tm tm;
+          strptime(expiresStr.c_str(), "%Y-%m-%dT%H:%M", &tm);
+          expires = mktime(&tm);
         }
-        if (doc.containsKey("user_id")) {
-          config.user_id = doc["user_id"].as<String>();
-        }
-
-        if (doc.containsKey("user_password")) {
-          config.user_password = doc["user_password"].as<String>();
-        }
-
+        config.codes[config.numCodes++] = Code(codeValue, expiresStr);
       }
     }
-  }
-}
-
-
-bool validateDateTime(String dateTimeStr) {
-  int year = dateTimeStr.substring(0, 4).toInt();
-  int month = dateTimeStr.substring(5, 7).toInt();
-  int day = dateTimeStr.substring(8, 10).toInt();
-  int hour = dateTimeStr.substring(11, 13).toInt();
-  int minute = dateTimeStr.substring(14, 16).toInt();
-  if (year < 2021 || month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-    return false;
-  }
-  return true;
-}
-
-void saveConfig() {
-  DynamicJsonDocument doc(16384);
-  JsonArray codes = doc.createNestedArray("codes");
-  for (int i = 0; i < config.numCodes; i++) {
-    JsonObject code = codes.createNestedObject();
-    code["value"] = config.codes[i].value;
-    code["expires"] = config.codes[i].expires;
-  }
-  
-  // Add user ID and password to the JSON object
-  doc["user_id"] = config.user_id;
-  doc["user_password"] = config.user_password;
-    Serial.println(config.user_id);
-    Serial.println(config.user_password);
-  File configFile = SPIFFS.open(CONFIG_FILE, "w");
-  if (configFile) {
-    serializeJson(doc, configFile);
-    configFile.close();
-  }
-}
-
-bool isNumeric(String str) {
-  for (int i = 0; i < str.length(); i++) {
-    if (!isdigit(str.charAt(i))) {
-      return false;
+    // Extract the user_id and user_password fields from the JSON document and add them to the configuration object if they exist.
+    if (doc.containsKey("user_id")) {
+      config.user_id = doc["user_id"].as<String>();
     }
+
+    if (doc.containsKey("user_password")) {
+      config.user_password = doc["user_password"].as<String>();
+    }
+
   }
-  return true;
+}
+}
 }
 
-//-------------Part2
+// This function takes a date and time string in the format "YYYY-MM-DDThh:mm" and validates it.
+bool validateDateTime(String dateTimeStr) {
+// Extract the year, month, day, hour, and minute from the date and time string using the substring method and convert them to integers using the toInt method.
+int year = dateTimeStr.substring(0, 4).toInt();
+int month = dateTimeStr.substring(5, 7).toInt();
+int day = dateTimeStr.substring(8, 10).toInt();
+int hour = dateTimeStr.substring(11, 13).toInt();
+int minute = dateTimeStr.substring(14, 16).toInt();
+// Check if the year, month, day, hour, and minute values are valid. If any value is invalid, return false.
+if (year < 2021 || month < 1 || month > 12 || day < 1 || day > 31 || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+return false;
+}
+// If all values are valid, return true.
+return true;
+}
+
+// This function saves the configuration object to a file in SPIFFS in JSON format.
+void saveConfig() {
+// Create a new JSON document with a capacity of 16384 bytes.
+DynamicJsonDocument doc(16384);
+// Create a new JSON array to hold the codes in the configuration object.
+JsonArray codes = doc.createNestedArray("codes");
+// Iterate over each code in the configuration object and add it to the JSON array.
+for (int i = 0; i < config.numCodes; i++) {
+JsonObject code = codes.createNestedObject();
+code["value"] = config.codes[i].value;
+code["expires"] = config.codes[i].expires;
+}
+// Add the user ID and password to the JSON document.
+doc["user_id"] = config.user_id;
+doc["user_password"] = config.user_password;
+// Open the configuration file for writing.
+File configFile = SPIFFS.open(CONFIG_FILE, "w");
+if (configFile) {
+// Serialize the JSON document to a string and write it to the configuration file.
+serializeJson(doc, configFile);
+configFile.close();
+}
+}
+
+// This function checks if a string contains only numeric characters.
+bool isNumeric(String str) {
+// Iterate over each character in the string and check if it is a digit. If any character is not a digit, return false.
+for (int i = 0; i < str.length(); i++) {
+if (!isdigit(str.charAt(i))) {
+return false;
+}
+}
+// If all characters are digits, return true.
+return true;
+}
+
+//-------------
 
 void handleAddCode() {
   if (!server.authenticate(config.user_id.c_str(), config.user_password.c_str()))  {
